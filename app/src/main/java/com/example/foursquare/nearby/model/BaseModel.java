@@ -17,8 +17,12 @@ import retrofit2.Retrofit;
 abstract class BaseModel<T> implements IModel {
 
     private static final String TAG = BaseModel.class.getSimpleName();
-    protected IResponseListener<T> listener;
+    private IResponseListener<T> listener;
     private Disposable disposable;
+
+    public BaseModel(IResponseListener<T> listener) {
+        this.listener = listener;
+    }
 
     protected Retrofit getClient() {
         return NetworkClient.getClient();

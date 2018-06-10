@@ -1,6 +1,7 @@
 package com.example.foursquare.nearby.ui;
 
 import android.Manifest;
+import android.app.Activity;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -8,11 +9,11 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.location.LocationManager;
 import android.os.Build;
-import android.os.Handler;
 import android.os.Looper;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
+import android.widget.Toast;
 
 import com.example.foursquare.nearby.utility.Logger;
 import com.google.android.gms.location.FusedLocationProviderClient;
@@ -26,16 +27,16 @@ import com.google.android.gms.location.SettingsClient;
 import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
 
-import java.lang.ref.WeakReference;
-
 import static android.app.Activity.RESULT_CANCELED;
 import static android.app.Activity.RESULT_OK;
 
-final class LocationHandler {
+final class LocationHandler implements ILocationHandler {
+
     private static final String TAG = LocationHandler.class.getSimpleName();
     private static final int ACCESS_FINE_LOCATION_INTENT_ID = 1001;
     private static final String BROADCAST_ACTION = "android.location.PROVIDERS_CHANGED";
-    private final WeakReference<MainActivity> mContext;
+    private Context mContext;
+    private IFetchLocation locListener;
     private LocationRequest mLocationRequest;
     private FusedLocationProviderClient mFusedLocationClient;
     private SettingsClient mSettingsClient;
@@ -60,14 +61,16 @@ final class LocationHandler {
                 } else {
                     //If GPS turned OFF show Location Dialog
                     Logger.e(TAG, "About GPS is Disabled in your device");
+                    requestLocationPermission();
                 }
 
             }
         }
     };
 
-    LocationHandler(MainActivity mContext) {
-        this.mContext = new WeakReference<>(mContext);
+    LocationHandler(Context context, IFetchLocation listener) {
+        this.mContext = context;
+        locListener = listener;
         init();
         checkPermissions();
     }
@@ -85,10 +88,10 @@ final class LocationHandler {
         mLocationSettingsRequest = builder.build();
 
         // Check whether location settings are satisfied
-        mSettingsClient = LocationServices.getSettingsClient(mContext.get());
+        mSettingsClient = LocationServices.getSettingsClient(mContext);
 
         // new Google API SDK v11 uses getFusedLocationProviderClient(this)
-        mFusedLocationClient = LocationServices.getFusedLocationProviderClient(mContext.get());
+        mFusedLocationClient = LocationServices.getFusedLocationProviderClient(mContext);
 
         mLocationCallback = new LocationCallback() {
             @Override
@@ -97,8 +100,8 @@ final class LocationHandler {
                 Logger.d(TAG, "Current location : " + locationResult);
                 double lat = locationResult.getLastLocation().getLatitude();
                 double lng = locationResult.getLastLocation().getLongitude();
-                if (mContext.get() != null)
-                    mContext.get().fetchVennueListBasedOnLocation("" + lat + "," + lng);
+                if (locListener != null)
+                    locListener.fetchDataBasedonLocation("" + lat + "," + lng);
                 stopLocationUpdates();
             }
         };
@@ -119,6 +122,7 @@ final class LocationHandler {
             @Override
             public void onFailure(@NonNull Exception e) {
                 Logger.v(TAG, "onFailure");
+                Toast.makeText(mContext, "Some error in fetching gps information", Toast.LENGTH_SHORT).show();
             }
         });
     }
@@ -127,10 +131,33 @@ final class LocationHandler {
         mFusedLocationClient.removeLocationUpdates(mLocationCallback);
     }
 
+    /* Check Location Permission for Marshmallow Devices */
+    private void checkPermissions() {
+        if (Build.VERSION.SDK_INT >= 23 && ContextCompat.checkSelfPermission(mContext,
+                Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestLocationPermission();
+        } else
+            startLocationUpdates();
+    }
+
+    private void requestLocationPermission() {
+        if (ActivityCompat.shouldShowRequestPermissionRationale((Activity) mContext, Manifest.permission.ACCESS_FINE_LOCATION)) {
+            ActivityCompat.requestPermissions((Activity) mContext,
+                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+                    ACCESS_FINE_LOCATION_INTENT_ID);
+
+        } else {
+            ActivityCompat.requestPermissions((Activity) mContext,
+                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+                    ACCESS_FINE_LOCATION_INTENT_ID);
+        }
+    }
+
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         Logger.v(TAG, "Received response for location permission request.");
         if (requestCode == ACCESS_FINE_LOCATION_INTENT_ID && grantResults.length == 1 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            startLocationUpdates();
+            checkPermissions();
         }
     }
 
@@ -151,41 +178,24 @@ final class LocationHandler {
         }
     }
 
-    /* Check Location Permission for Marshmallow Devices */
-    private void checkPermissions() {
-        if (Build.VERSION.SDK_INT >= 23 && ContextCompat.checkSelfPermission(mContext.get(),
-                Manifest.permission.ACCESS_FINE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED) {
-            requestLocationPermission();
-        } else
-            startLocationUpdates();
-    }
-
-    private void requestLocationPermission() {
-        if (ActivityCompat.shouldShowRequestPermissionRationale(mContext.get(), Manifest.permission.ACCESS_FINE_LOCATION)) {
-            ActivityCompat.requestPermissions(mContext.get(),
-                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
-                    ACCESS_FINE_LOCATION_INTENT_ID);
-
-        } else {
-            ActivityCompat.requestPermissions(mContext.get(),
-                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
-                    ACCESS_FINE_LOCATION_INTENT_ID);
-        }
-    }
-
     public void onPause() {
-        mContext.get().unregisterReceiver(gpsLocationReceiver);
+        mContext.unregisterReceiver(gpsLocationReceiver);
     }
 
     public void onResume() {
-        mContext.get().registerReceiver(gpsLocationReceiver, new IntentFilter(BROADCAST_ACTION));//Register broadcast receiver to check the status of GPS
+        mContext.registerReceiver(gpsLocationReceiver, new IntentFilter(BROADCAST_ACTION));//Register broadcast receiver to check the status of GPS
     }
 
-    void onDestroy() {
+    public void onDestroy() {
         stopLocationUpdates();
         mLocationRequest = null;
         mFusedLocationClient = null;
         mLocationSettingsRequest = null;
+        locListener = null;
+        mContext = null;
+    }
+
+    interface IFetchLocation {
+        void fetchDataBasedonLocation(String locString);
     }
 }

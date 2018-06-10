@@ -16,7 +16,7 @@ public final class VenueListModel extends BaseModel<Data> implements IVenueListM
     private String queryLocString;
 
     public VenueListModel(IResponseListener<Data> listener) {
-        this.listener = listener;
+        super(listener);
     }
 
     @Override

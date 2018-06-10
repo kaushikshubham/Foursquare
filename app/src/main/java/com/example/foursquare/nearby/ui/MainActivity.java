@@ -23,7 +23,7 @@ import com.example.foursquare.nearby.utility.Logger;
 
 import static android.content.res.Configuration.ORIENTATION_PORTRAIT;
 
-public class MainActivity extends AppCompatActivity implements IView, LoaderManager.LoaderCallbacks<IVenueListDataPresenter>, RecyclerTouchListener.ClickListener {
+public class MainActivity extends AppCompatActivity implements IView, LoaderManager.LoaderCallbacks<IVenueListDataPresenter>, RecyclerTouchListener.ClickListener, LocationHandler.IFetchLocation {
 
     private static final String TAG = MainActivity.class.getSimpleName();
     private IVenueListDataPresenter presenter;
@@ -39,28 +39,30 @@ public class MainActivity extends AppCompatActivity implements IView, LoaderMana
         setContentView(R.layout.activity_main);
 
         fab = findViewById(R.id.fab);
-        fab.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                presenter.sort();
-            }
-        });
         progressBar = findViewById(R.id.progress_bar);
-        locationHandler = new LocationHandler(this);
-
         rv = findViewById(R.id.list);
+
+        locationHandler = new LocationHandler(this, this);
 
         adapter = new VenueListAdapter(presenter);
         rv.setAdapter(adapter);
         rv.setLayoutManager(new GridLayoutManager(this, (getResources().getConfiguration().orientation == ORIENTATION_PORTRAIT) ? 2 : 4));
 
         rv.addOnItemTouchListener(new RecyclerTouchListener(this, this));
+
+        fab.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                presenter.sort();
+            }
+        });
          /* 1001 is a unique loader id through which system manages
          a single instance of loader for an activity */
         getLoaderManager().initLoader(1001, null, this);
     }
 
-    public void fetchVennueListBasedOnLocation(String locstring) {
+    @Override
+    public void fetchDataBasedonLocation(String locstring) {
         presenter.attachView(this);
         presenter.fetchData(locstring);
     }
@@ -68,8 +70,9 @@ public class MainActivity extends AppCompatActivity implements IView, LoaderMana
     @Override
     public void dataDownLoaded() {
         Logger.v(TAG, "data downloaded : " + presenter.getCount());
-        if (progressBar.getVisibility() == View.VISIBLE)
+        if (progressBar.getVisibility() == View.VISIBLE) {
             progressBar.setVisibility(View.GONE);
+        }
         if (fab.getVisibility() != View.VISIBLE) {
             fab.setVisibility(View.VISIBLE);
         }
@@ -84,22 +87,6 @@ public class MainActivity extends AppCompatActivity implements IView, LoaderMana
     }
 
     @Override
-    public Loader<IVenueListDataPresenter> onCreateLoader(int id, Bundle args) {
-        return new ListLoader(this, new VenueListDataPresenter());
-    }
-
-    @Override
-    public void onLoadFinished(Loader<IVenueListDataPresenter> loader, IVenueListDataPresenter data) {
-        presenter = data;
-        fetchVennueListBasedOnLocation(null);
-    }
-
-    @Override
-    public void onLoaderReset(Loader<IVenueListDataPresenter> loader) {
-        presenter.onDestroy();
-    }
-
-    @Override
     protected void onResume() {
         super.onResume();
         locationHandler.onResume();
@@ -109,8 +96,6 @@ public class MainActivity extends AppCompatActivity implements IView, LoaderMana
     protected void onPause() {
         super.onPause();
         locationHandler.onPause();
-        if (presenter != null)
-            presenter.detachView();
     }
 
     /* On Request permission method to check the permisison is granted or not for Marshmallow+ Devices  */
@@ -119,7 +104,6 @@ public class MainActivity extends AppCompatActivity implements IView, LoaderMana
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         locationHandler.onRequestPermissionsResult(requestCode, permissions, grantResults);
     }
-
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -133,10 +117,33 @@ public class MainActivity extends AppCompatActivity implements IView, LoaderMana
             presenter.detachView();
         locationHandler.onDestroy();
         progressBar = null;
+        locationHandler = null;
+        presenter = null;
     }
 
     @Override
     public void onClick(View view, int position) {
         presenter.onClick(position);
+    }
+
+    /*
+    Loader callback
+     */
+    @Override
+    public Loader<IVenueListDataPresenter> onCreateLoader(int id, Bundle args) {
+        return new ListLoader(this, new VenueListDataPresenter());
+    }
+
+    @Override
+    public void onLoadFinished(Loader<IVenueListDataPresenter> loader, IVenueListDataPresenter data) {
+        presenter = data;
+        fetchDataBasedonLocation(null);
+    }
+
+    @Override
+    public void onLoaderReset(Loader<IVenueListDataPresenter> loader) {
+        if (presenter != null)
+            presenter.onDestroy();
+        presenter = null;
     }
 }
