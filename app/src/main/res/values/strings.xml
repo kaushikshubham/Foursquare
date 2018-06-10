@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">NearBy</string>
+    <string name="network_not_available">Internet not available</string>
+    <string name="error_found">Error found</string>
 </resources>
